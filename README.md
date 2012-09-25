@@ -14,7 +14,7 @@ Trial data files are of the form:
 
 For example
 
-    # set 1 ( a descriptive header)
+    # set 1
     # x y z
     0 1 2
     1 2 3
