@@ -1,5 +1,6 @@
 #! /usr/bin/env python2
 import itertools
+import numpy as np
 
 def stack(t1, t2, f):
     t1.data = f((t1.data, t2.data))
@@ -9,7 +10,7 @@ class TrialData:
     header = None
     fields = []
     data = None
-    f = lambda s,x: x.split()
+    f = lambda s,x: map(float, x.split())
     data_post = lambda s,x: x
     def __init__(self,header,**kwargs):
         if 'data_post' in kwargs:
@@ -36,6 +37,17 @@ class TrialData:
             except ValueError as e:
                 raise ValueError("'{}' not in {}".format(n,self.fields))
         return self.data[:,I]
+
+    def get_avg_columns(self,names):
+        if len(self.data.shape) == 3:
+            return self.get_columns(names).mean(axis=2)
+        else:
+            return self.get_columns(names)
+
+    def get_err(self, n1, n2):
+        c1 = self.get_columns(n1)
+        c2 = self.get_columns(n2)
+        return c1-c2
 
     def post(self):
         self.data = self.data_post(self.data)
@@ -75,34 +87,35 @@ def iterator(iterable,**kwargs):
                 trial.add_data(line)
     yield trial.post()
 
+def stack_iterator(iterable,**kwargs):
+    last_header = None
+    datasets = {}
+    for trial in iterator(iterable,**kwargs):
+        if trial.header in datasets:
+            datasets[trial.header].stack(trial, trunc_stack)
+        else:
+            if last_header != None:
+                yield datasets[last_header]
+            last_header = trial.header
+            datasets[trial.header] = trial
+        if last_header == None:
+            last_header = trial.header
+    yield datasets[datasets.keys()[0]]
+
 def sum_stack((np1,np2)):
     size = min(np1.shape[0], np2.shape[0])
     return np1+np2
 
 def trunc_stack((np1, np2)):
     size = min(np1.shape[0], np2.shape[0])
-    #try:
-    #    np1.shape[2]
-    #    return np.concatenate((np1[:size,:,:],np2[:size,:]),axis=2)
-    #except IndexError:
     return np.dstack((np1[:size,:],np2[:size,:]))
-
-
     
 if __name__=='__main__':
     import sys
     import numpy as np
+    import fileinput
+    
+    for stack in stack_iterator(fileinput.input(), data_post=np.array):
+        print "{} : {} : {}".format(stack.header, stack.fields, stack.data.shape)
 
-    datasets = {}
-    for trial in iterator(sys.stdin,data_post=np.array):
-        if trial.header in datasets:
-            datasets[trial.header].stack(trial, trunc_stack)
-        else:
-            datasets[trial.header] = trial
-        
-    for mset in datasets:
-        dset = datasets[mset]
-        print "{} shape: {}\n".format(mset, dset.data.shape)
-        data = dset.get_columns(['y','z'])
-        print data[:,:,0]
-#avg = datasets[mset].data.mean(axis=2)
+
