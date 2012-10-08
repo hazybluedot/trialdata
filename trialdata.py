@@ -1,6 +1,9 @@
 #! /usr/bin/env python2
 import itertools
 import numpy as np
+import re
+import sys
+import os
 
 def stack(t1, t2, f):
     t1.data = f((t1.data, t2.data))
@@ -31,12 +34,23 @@ class TrialData:
 
     def get_columns(self, names):
         I = []
+        if not isinstance(names, list):
+            names = self.names_match(names)
         for n in names:
             try:
                 I.append(self.fields.index(n))
             except ValueError as e:
                 raise ValueError("'{}' not in {}".format(n,self.fields))
         return self.data[:,I]
+
+    def names_match(self,regex):
+        regex = re.compile(regex)
+        matches = []
+        for name in self.fields:
+            m = regex.search(name)
+            if m:
+                matches.append(name)
+        return matches
 
     def get_avg_columns(self,names):
         if len(self.data.shape) == 3:
@@ -76,15 +90,16 @@ def iterator(iterable,**kwargs):
                 continue
 
         if state=='data':
-            if sep:
-                yield trial.post()
-                state = states.next()
-                assert(state == 'header')
-                trial = TrialData(rest,**kwargs)
-                state = states.next()
-                continue
-            else:
-                trial.add_data(line)
+            if not rest.startswith('#'):
+                if sep:
+                    yield trial.post()
+                    state = states.next()
+                    assert(state == 'header')
+                    trial = TrialData(rest,**kwargs)
+                    state = states.next()
+                    continue
+                else:
+                    trial.add_data(line)
     yield trial.post()
 
 def stack_iterator(iterable,**kwargs):
@@ -109,7 +124,17 @@ def sum_stack((np1,np2)):
 def trunc_stack((np1, np2)):
     size = min(np1.shape[0], np2.shape[0])
     return np.dstack((np1[:size,:],np2[:size,:]))
-    
+
+def load_files(files, **kwargs):
+    data = {}
+    for f in files:
+        sys.stderr.write("Reading from {}\n".format(f.name))
+        (basedir, filename) = os.path.split(f.name)
+        data[filename] = []
+        for stack in stack_iterator(f, **kwargs):
+            data[filename].append(stack)
+    return data
+
 if __name__=='__main__':
     import sys
     import numpy as np
